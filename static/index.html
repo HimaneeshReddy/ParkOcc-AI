@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ParkOcc-AI Dashboard</title>
+<style>
+:root{--crimson:#b01030;--red:#d4142a;--ink:#1a1a1a;--muted:#5a6070;--card:#f4f6fc;--line:#dde1ee;--bg:#fff;
+--c0:#2e9e5b;--c1:#7bbf3f;--c2:#e8a317;--c3:#e8701a;--c4:#d3202f}
+@media (prefers-color-scheme:dark){:root{--ink:#eceef5;--muted:#a3a9ba;--card:#1d2030;--line:#343a52;--bg:#12141f}}
+*{box-sizing:border-box}
+body{margin:0;font-family:Calibri,"Segoe UI",system-ui,sans-serif;color:var(--ink);background:var(--bg);line-height:1.45}
+header{background:var(--crimson);color:#fff;padding:16px 28px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{margin:0;font-family:Cambria,Georgia,serif;font-size:26px}
+header p{margin:0;opacity:.9;font-size:14px}
+#status{margin-left:auto;font-size:13px;padding:4px 12px;border-radius:999px;background:rgba(255,255,255,.18)}
+main{max-width:1180px;margin:0 auto;padding:22px 20px 48px;display:grid;grid-template-columns:minmax(300px,420px) 1fr;gap:22px}
+@media (max-width:860px){main{grid-template-columns:1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+section+section{margin-top:16px}
+h2{margin:0 0 10px;font-size:15px;color:var(--crimson);font-family:Cambria,Georgia,serif;letter-spacing:.2px}
+h2 span{display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:50%;background:var(--crimson);color:#fff;font-size:12px;margin-right:8px;font-family:Calibri,sans-serif}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+select,input[type=datetime-local]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:3px solid #f5a3b0;outline-offset:2px}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tab{flex:1;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.tab[aria-selected=true]{background:var(--crimson);color:#fff;border-color:var(--crimson)}
+#drop{display:block;border:2px dashed var(--line);border-radius:10px;padding:26px 12px;text-align:center;color:var(--muted);background:var(--bg);cursor:pointer;margin:0}
+#drop.over,#drop:hover{border-color:var(--crimson);color:var(--crimson)}
+#drop strong{display:block;color:var(--ink);margin-bottom:4px}
+#file{position:absolute;opacity:0;width:1px;height:1px}
+#fname{margin-top:8px;font-size:13px;color:var(--muted);word-break:break-all}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.seg button{padding:8px 4px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font-size:13px}
+.seg button[aria-pressed=true]{background:var(--crimson);color:#fff;border-color:var(--crimson)}
+.go{width:100%;margin-top:16px;padding:12px;border:0;border-radius:8px;background:var(--red);color:#fff;font-size:16px;font-weight:700}
+.go:disabled{opacity:.5;cursor:wait}
+.ghost{padding:8px 12px;border:1px solid var(--crimson);border-radius:6px;background:transparent;color:var(--crimson);width:100%;margin-top:10px}
+.film{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:10px}
+.film figure{margin:0;position:relative}
+.film img{width:100%;aspect-ratio:8/5;object-fit:cover;border-radius:4px;border:1px solid var(--line);display:block;background:var(--bg)}
+.film figcaption{font-size:11px;text-align:center;color:var(--muted);margin-top:2px}
+.film .bad img{outline:2px solid var(--c3)}
+#badge{display:inline-block;font-size:34px;font-weight:800;padding:8px 26px;border-radius:12px;color:#fff;background:var(--muted);font-family:Cambria,Georgia,serif}
+.conf{height:12px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:8px;max-width:420px}
+.conf>div{height:100%;background:var(--crimson);width:0;transition:width .4s}
+.bars{margin-top:14px;display:grid;gap:6px;max-width:520px}
+.bar{display:grid;grid-template-columns:70px 1fr 50px;gap:8px;align-items:center;font-size:13px}
+.bar>i{display:block;height:10px;border-radius:5px;background:var(--line);position:relative;overflow:hidden}
+.bar>i>b{position:absolute;left:0;top:0;bottom:0}
+.note{font-size:13px;color:var(--muted);margin:8px 0 0}
+.warn{margin:10px 0 0;padding:8px 12px;border-left:4px solid var(--c3);background:var(--bg);font-size:13px;border-radius:4px}
+.err{border-left-color:var(--c4);color:var(--c4)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--crimson);color:#fff;padding:6px 8px;text-align:left}
+td{padding:6px 8px;border-bottom:1px solid var(--line)}
+tr.sel td{background:rgba(176,16,48,.10);font-weight:700}
+.pill{display:inline-block;padding:1px 10px;border-radius:999px;color:#fff;font-size:12px}
+.cm{display:inline-grid;grid-template-columns:auto repeat(5,46px);gap:2px;font-size:11px;margin-top:8px}
+.cm div{text-align:center;padding:5px 0;border-radius:3px}
+.cm .h{color:var(--muted);background:none}
+.row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+#empty{color:var(--muted);padding:26px 0;text-align:center}
+.hist li{font-size:13px;padding:4px 0;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.hist{list-style:none;margin:0;padding:0}
+</style>
+</head>
+<body>
+<header>
+  <h1>ParkOcc-AI</h1><p>Smart parking occupancy classification &middot; prototype</p>
+  <span id="status" role="status">connecting&hellip;</span>
+</header>
+<main>
+<div>
+  <section aria-labelledby="h1">
+    <h2 id="h1"><span>1</span>Input</h2>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-up" aria-selected="true" aria-controls="p-up">Upload</button>
+      <button class="tab" role="tab" id="tab-gen" aria-selected="false" aria-controls="p-gen">Generate sample</button>
+    </div>
+    <div id="p-up" role="tabpanel">
+      <label id="drop" for="file"><strong>Drag &amp; drop a CCTV image or short clip</strong>or click to browse &middot; jpg, png, mp4, avi, mov, webm</label>
+      <input id="file" type="file" accept="image/*,video/*">
+      <div id="fname"></div>
+    </div>
+    <div id="p-gen" role="tabpanel" hidden>
+      <label for="level">Target occupancy</label>
+      <select id="level"><option value="random">Random</option><option>Empty</option><option>Low</option><option>Medium</option><option>High</option><option>Full</option></select>
+      <label for="gcond">Rendering condition</label>
+      <select id="gcond"><option value="clear">Clear</option><option value="overcast">Overcast</option><option value="rain">Rain</option></select>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="gnoise" checked> Camera noise (glare, occlusion, blur)</label>
+      <button class="ghost" id="gen">Generate sample clip</button>
+    </div>
+    <div class="film" id="film" aria-label="Six frames of the clip"></div>
+  </section>
+  <section aria-labelledby="h2">
+    <h2 id="h2"><span>2</span>Model</h2>
+    <div class="seg" id="seg" role="group" aria-label="Model">
+      <button data-m="baseline" aria-pressed="false">Baseline</button>
+      <button data-m="rnn" aria-pressed="false">RNN</button>
+      <button data-m="lstm" aria-pressed="false">LSTM</button>
+      <button data-m="gru" aria-pressed="true">GRU</button>
+    </div>
+    <label for="cond">Filming condition</label>
+    <select id="cond"><option value="clear">Clear</option><option value="overcast">Overcast</option><option value="rain">Rain</option></select>
+    <label for="when">Capture time</label>
+    <input type="datetime-local" id="when">
+    <button class="go" id="go">Analyze occupancy</button>
+  </section>
+</div>
+<div>
+  <section aria-labelledby="h3" aria-live="polite">
+    <h2 id="h3"><span>3</span>Result</h2>
+    <div id="empty">Choose or generate a clip, then press <b>Analyze occupancy</b>.</div>
+    <div id="res" hidden>
+      <div class="note" style="margin:0 0 6px">PREDICTED OCCUPANCY LEVEL &middot; <span id="mname"></span></div>
+      <div id="badge">&ndash;</div>
+      <div class="note" id="conf"></div>
+      <div class="conf"><div id="confbar"></div></div>
+      <p class="note" id="advice" style="font-size:14px;color:var(--ink)"></p>
+      <div class="bars" id="bars"></div>
+      <div id="truth" class="note"></div>
+      <div id="warns"></div>
+    </div>
+    <div id="errbox"></div>
+  </section>
+  <section id="cmpsec" hidden aria-labelledby="h4">
+    <h2 id="h4">Model comparison on this clip</h2>
+    <table><thead><tr><th>Model</th><th>Prediction</th><th>Confidence</th></tr></thead><tbody id="cmp"></tbody></table>
+  </section>
+  <section aria-labelledby="h5">
+    <h2 id="h5">Model performance (this prototype)</h2>
+    <p class="note" style="margin-top:0">Measured on 6 held-out synthetic test lots, plus end-to-end on freshly rendered clips. These are the prototype's own numbers, not the report's.</p>
+    <table><thead><tr><th>Model</th><th>Params</th><th>Accuracy</th><th>Macro-F1</th><th>Full recall</th><th>Under-est.</th><th>ms</th><th>E2E acc.</th></tr></thead><tbody id="perf"></tbody></table>
+    <div class="row"><div><div class="note" id="cmtitle"></div><div class="cm" id="cm"></div></div><div class="note" id="extinfo" style="max-width:360px"></div></div>
+  </section>
+  <section aria-labelledby="h6">
+    <h2 id="h6">History <button id="clr" class="ghost" style="width:auto;margin:0 0 0 10px;padding:2px 10px;font-size:12px">clear</button></h2>
+    <ul class="hist" id="hist"></ul>
+  </section>
+</div>
+</main>
+<script>
+const ORDER=["baseline","rnn","lstm","gru"];
+const COL=["var(--c0)","var(--c1)","var(--c2)","var(--c3)","var(--c4)"], CLS=["Empty","Low","Medium","High","Full"];
+const $=id=>document.getElementById(id); let model="gru", file=null, clipId=null, M=null, cmModel="gru";
+const pad=n=>String(n).padStart(2,"0"); const d=new Date(); $("when").value=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function tab(which){const up=which==="up";$("tab-up").setAttribute("aria-selected",up);$("tab-gen").setAttribute("aria-selected",!up);$("p-up").hidden=!up;$("p-gen").hidden=up}
+$("tab-up").onclick=()=>tab("up");$("tab-gen").onclick=()=>tab("gen");
+function setFile(f){file=f;clipId=null;$("fname").textContent=f?`${f.name} (${(f.size/1024).toFixed(0)} KB)`:"";$("film").innerHTML=""}
+$("file").onchange=e=>setFile(e.target.files[0]||null);
+const dz=$("drop");["dragenter","dragover"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add("over")}));
+["dragleave","drop"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove("over")}));
+dz.addEventListener("drop",e=>{if(e.dataTransfer.files[0])setFile(e.dataTransfer.files[0])});
+document.querySelectorAll("#seg button").forEach(b=>b.onclick=()=>{model=b.dataset.m;document.querySelectorAll("#seg button").forEach(x=>x.setAttribute("aria-pressed",x===b));if(lastOut)render(lastOut)});
+function film(frames,ratios){ $("film").innerHTML=frames.map((s,i)=>`<figure class="${ratios&&ratios[i].unusable?"bad":""}"><img alt="frame ${i+1}" src="${s}"><figcaption>${ratios?(ratios[i].ratio*100).toFixed(0)+"%":"#"+(i+1)}</figcaption></figure>`).join("")}
+function showErr(m){$("errbox").innerHTML=m?`<div class="warn err" role="alert">${esc(m)}</div>`:""}
+$("gen").onclick=async()=>{showErr("");$("gen").disabled=true;
+  try{const r=await fetch("/api/sample",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({level:$("level").value,condition:$("gcond").value,noise:$("gnoise").checked})});
+    const j=await r.json(); if(!r.ok)throw new Error(j.error); clipId=j.clip_id;file=null;sampleTruth=j.truth;$("cond").value=$("gcond").value;film(j.frames);
+  }catch(e){showErr(e.message)}finally{$("gen").disabled=false}};
+let lastOut=null, sampleTruth=null;
+$("go").onclick=async()=>{showErr("");
+  if(!file&&!clipId){showErr("Upload an image/video or generate a sample clip first.");return}
+  const fd=new FormData(); fd.append("model",model); fd.append("condition",$("cond").value); if($("when").value)fd.append("timestamp",$("when").value);
+  if(clipId)fd.append("clip_id",clipId); else fd.append("file",file);
+  $("go").disabled=true;$("go").textContent="Analyzing…";
+  try{const r=await fetch("/api/predict",{method:"POST",body:fd}); const j=await r.json(); if(!r.ok)throw new Error(j.error);
+    lastOut=j; if(!clipId)sampleTruth=null; render(j); film(j.frames.map(f=>f.thumb),j.frames); addHist(j);
+  }catch(e){showErr(e.message)}finally{$("go").disabled=false;$("go").textContent="Analyze occupancy"}};
+function render(j){const r=j.results[model]; $("empty").hidden=true;$("res").hidden=false;$("cmpsec").hidden=false;
+  $("mname").textContent=r.name;$("badge").textContent=r.label.toUpperCase();$("badge").style.background=COL[r.class_index];
+  $("conf").textContent=`Confidence: ${(r.confidence*100).toFixed(0)}%  ·  estimated fill of last frame: ${(j.estimated_ratio*100).toFixed(0)}%`;$("confbar").style.width=(r.confidence*100)+"%";
+  $("advice").textContent=j.advice[model]+((r.class_index>=3)?" (Models tend to under-estimate, so treat High as possibly Full.)":"");
+  $("bars").innerHTML=CLS.map((c,i)=>`<div class="bar"><span>${c}</span><i><b style="width:${r.probs[c]*100}%;background:${COL[i]}"></b></i><span>${(r.probs[c]*100).toFixed(0)}%</span></div>`).join("");
+  $("truth").textContent=sampleTruth?`Simulated ground truth: ${sampleTruth.class} (${(sampleTruth.ratio*100).toFixed(0)}% full)`:"";
+  $("warns").innerHTML=j.warnings.map(w=>`<div class="warn">${esc(w)}</div>`).join("");
+  $("cmp").innerHTML=ORDER.map(k=>[k,j.results[k]]).map(([k,v])=>`<tr class="${k===model?"sel":""}"><td>${esc(v.name)}</td><td><span class="pill" style="background:${COL[v.class_index]}">${v.label}</span></td><td>${(v.confidence*100).toFixed(0)}%</td></tr>`).join("")}
+function addHist(j){const h=JSON.parse(localStorage.getItem("parkocc_hist")||"[]"); const r=j.results[model];
+  h.unshift({t:new Date().toLocaleTimeString(),m:r.name,l:r.label,i:r.class_index,c:Math.round(r.confidence*100),s:j.source}); localStorage.setItem("parkocc_hist",JSON.stringify(h.slice(0,10)));drawHist()}
+function drawHist(){const h=JSON.parse(localStorage.getItem("parkocc_hist")||"[]");
+  $("hist").innerHTML=h.length?h.map(x=>`<li><span>${esc(x.t)}</span><span class="pill" style="background:${COL[x.i]}">${esc(x.l)}</span><span>${x.c}%</span><span class="note" style="margin:0">${esc(x.m)} · ${esc(x.s)}</span></li>`).join(""):`<li class="note">No analyses yet.</li>`}
+$("clr").onclick=()=>{localStorage.removeItem("parkocc_hist");drawHist()};
+function perf(){if(!M)return;const t=M.test_lots,e=M.end_to_end;
+  $("perf").innerHTML=ORDER.map(k=>`<tr><td><a href="#" data-k="${k}" style="color:inherit">${esc(M.names[k])}</a></td><td>${t[k].params.toLocaleString()}</td><td>${(t[k].accuracy*100).toFixed(1)}%</td><td>${t[k].macro_f1.toFixed(3)}</td><td>${t[k].full_recall.toFixed(2)}</td><td>${(t[k].under_share*100).toFixed(0)}%</td><td>${t[k].ms_per_window}</td><td>${(e[k].accuracy*100).toFixed(0)}%</td></tr>`).join("");
+  document.querySelectorAll("#perf a").forEach(a=>a.onclick=ev=>{ev.preventDefault();cmModel=a.dataset.k;cm()});
+  const x=M.extractor;$("extinfo").textContent=`Frame feature extractor: mean error ${(x.mae_ratio*100).toFixed(1)} points of occupancy (about ${x.mae_slots.toFixed(1)} of 36 slots). Under-est. = share of errors that predict a lower level than the truth. E2E = ${e.n_clips} rendered clips through extractor and models.`;cm()}
+function cm(){const c=M.test_lots[cmModel].confusion;const mx=Math.max(...c.flat());$("cmtitle").textContent=`Confusion matrix, ${M.names[cmModel]} (rows = true, columns = predicted; click a model name above to switch)`;
+  let h='<div class="h"></div>'+CLS.map(x=>`<div class="h">${x.slice(0,4)}</div>`).join("");
+  c.forEach((row,i)=>{h+=`<div class="h" style="text-align:right;padding-right:4px">${CLS[i].slice(0,4)}</div>`+row.map(v=>`<div style="background:rgba(176,16,48,${(v/Math.max(1,row.reduce((a,b)=>a+b,0))*0.9+0.04).toFixed(2)});color:${v/Math.max(1,row.reduce((a,b)=>a+b,0))>0.45?"#fff":"inherit"}">${v}</div>`).join("")});$("cm").innerHTML=h}
+(async()=>{drawHist();try{const h=await (await fetch("/api/health")).json();$("status").textContent="API online · models loaded";
+  M=await (await fetch("/api/models")).json();perf()}catch(e){$("status").textContent="API offline"}})();
+</script>
+</body>
+</html>
