@@ -2,9 +2,18 @@
 import os, json, base64, datetime as dt
 import numpy as np, cv2
 from . import CLASSES, WINDOW, simulate, frames, nn
+from . import cnn as cnn_mod
+from . import gan as gan_mod
 
 ART = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "artifacts")
-MODEL_NAMES = {"baseline": "Single-frame baseline", "rnn": "RNN", "lstm": "LSTM", "gru": "GRU"}
+MODEL_NAMES = {
+    "baseline":    "Single-frame baseline",
+    "rnn":         "RNN",
+    "lstm":        "LSTM",
+    "gru":         "GRU",
+    "kmeans_cnn":  "K-means + CNN",
+    "gan":         "GAN (D-features)",
+}
 CONDITIONS = {"clear": 0, "overcast": 1, "rain": 2}
 ADVICE = {0: "Plenty of space: park without hesitation.", 1: "Space is likely available.",
           2: "Moderately busy: spaces should still be findable.", 3: "Nearly full: expect to search, consider an alternative.",
@@ -16,6 +25,10 @@ def thumb_b64(bgr, width=200, q=72):
     ok, buf = cv2.imencode(".jpg", im, [cv2.IMWRITE_JPEG_QUALITY, q]); return "data:image/jpeg;base64," + base64.b64encode(buf).decode()
 
 
+# Classic models that use nn.Classifier.from_state
+_CLASSIC_KINDS = {"baseline", "rnn", "lstm", "gru"}
+
+
 class Predictor:
     def __init__(self, art_dir=ART):
         self.art_dir = art_dir
@@ -23,7 +36,16 @@ class Predictor:
         missing = [n for n in need if not os.path.exists(os.path.join(art_dir, n))]
         if missing: raise FileNotFoundError(f"Missing artifacts {missing}. Run:  python -m parkocc.train")
         self.extractor = frames.FrameExtractor.load(os.path.join(art_dir, "extractor.npz"))
-        self.models = {k: nn.Classifier.from_state(np.load(os.path.join(art_dir, f"{k}.npz"))) for k in MODEL_NAMES}
+        self.models = {}
+        for k in MODEL_NAMES:
+            path = os.path.join(art_dir, f"{k}.npz")
+            z = np.load(path, allow_pickle=False)
+            if k in _CLASSIC_KINDS:
+                self.models[k] = nn.Classifier.from_state(z)
+            elif k == "kmeans_cnn":
+                self.models[k] = cnn_mod.KmeansCNNClassifier.from_state(z)
+            elif k == "gan":
+                self.models[k] = gan_mod.GANClassifier.from_state(z)
         with open(os.path.join(art_dir, "metrics.json")) as _f:
             self.metrics = json.load(_f)
 

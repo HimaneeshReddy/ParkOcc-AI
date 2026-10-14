@@ -32,8 +32,8 @@ button{font:inherit;cursor:pointer}
 #drop strong{display:block;color:var(--ink);margin-bottom:4px}
 #file{position:absolute;opacity:0;width:1px;height:1px}
 #fname{margin-top:8px;font-size:13px;color:var(--muted);word-break:break-all}
-.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-.seg button{padding:8px 4px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font-size:13px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.seg button{padding:8px 4px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font-size:12px}
 .seg button[aria-pressed=true]{background:var(--crimson);color:#fff;border-color:var(--crimson)}
 .go{width:100%;margin-top:16px;padding:12px;border:0;border-radius:8px;background:var(--red);color:#fff;font-size:16px;font-weight:700}
 .go:disabled{opacity:.5;cursor:wait}
@@ -102,6 +102,8 @@ tr.sel td{background:rgba(176,16,48,.10);font-weight:700}
       <button data-m="rnn" aria-pressed="false">RNN</button>
       <button data-m="lstm" aria-pressed="false">LSTM</button>
       <button data-m="gru" aria-pressed="true">GRU</button>
+      <button data-m="kmeans_cnn" aria-pressed="false">K-means+CNN</button>
+      <button data-m="gan" aria-pressed="false">GAN</button>
     </div>
     <label for="cond">Filming condition</label>
     <select id="cond"><option value="clear">Clear</option><option value="overcast">Overcast</option><option value="rain">Rain</option></select>
@@ -132,8 +134,8 @@ tr.sel td{background:rgba(176,16,48,.10);font-weight:700}
   </section>
   <section aria-labelledby="h5">
     <h2 id="h5">Model performance (this prototype)</h2>
-    <p class="note" style="margin-top:0">Measured on 6 held-out synthetic test lots, plus end-to-end on freshly rendered clips. These are the prototype's own numbers, not the report's.</p>
-    <table><thead><tr><th>Model</th><th>Params</th><th>Accuracy</th><th>Macro-F1</th><th>Full recall</th><th>Under-est.</th><th>ms</th><th>E2E acc.</th></tr></thead><tbody id="perf"></tbody></table>
+    <p class="note" style="margin-top:0">Measured on 6 held-out synthetic test lots, plus end-to-end on freshly rendered clips. These are the prototype's own numbers, not the report's.<br><b>New models</b>: K-means+CNN clusters CNN embeddings; GAN uses the Discriminator's 64-d features as a classifier backbone.</p>
+    <table><thead><tr><th>Model</th><th>Params</th><th>Accuracy</th><th>Macro-F1</th><th>Full recall</th><th>ms</th><th>E2E acc.</th></tr></thead><tbody id="perf"></tbody></table>
     <div class="row"><div><div class="note" id="cmtitle"></div><div class="cm" id="cm"></div></div><div class="note" id="extinfo" style="max-width:360px"></div></div>
   </section>
   <section aria-labelledby="h6">
@@ -143,7 +145,7 @@ tr.sel td{background:rgba(176,16,48,.10);font-weight:700}
 </div>
 </main>
 <script>
-const ORDER=["baseline","rnn","lstm","gru"];
+const ORDER=["baseline","rnn","lstm","gru","kmeans_cnn","gan"];
 const COL=["var(--c0)","var(--c1)","var(--c2)","var(--c3)","var(--c4)"], CLS=["Empty","Low","Medium","High","Full"];
 const $=id=>document.getElementById(id); let model="gru", file=null, clipId=null, M=null, cmModel="gru";
 const pad=n=>String(n).padStart(2,"0"); const d=new Date(); $("when").value=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -185,10 +187,10 @@ function drawHist(){const h=JSON.parse(localStorage.getItem("parkocc_hist")||"[]
   $("hist").innerHTML=h.length?h.map(x=>`<li><span>${esc(x.t)}</span><span class="pill" style="background:${COL[x.i]}">${esc(x.l)}</span><span>${x.c}%</span><span class="note" style="margin:0">${esc(x.m)} · ${esc(x.s)}</span></li>`).join(""):`<li class="note">No analyses yet.</li>`}
 $("clr").onclick=()=>{localStorage.removeItem("parkocc_hist");drawHist()};
 function perf(){if(!M)return;const t=M.test_lots,e=M.end_to_end;
-  $("perf").innerHTML=ORDER.map(k=>`<tr><td><a href="#" data-k="${k}" style="color:inherit">${esc(M.names[k])}</a></td><td>${t[k].params.toLocaleString()}</td><td>${(t[k].accuracy*100).toFixed(1)}%</td><td>${t[k].macro_f1.toFixed(3)}</td><td>${t[k].full_recall.toFixed(2)}</td><td>${(t[k].under_share*100).toFixed(0)}%</td><td>${t[k].ms_per_window}</td><td>${(e[k].accuracy*100).toFixed(0)}%</td></tr>`).join("");
+  $("perf").innerHTML=ORDER.filter(k=>t[k]).map(k=>`<tr><td><a href="#" data-k="${k}" style="color:inherit">${esc(M.names[k])}</a></td><td>${t[k].params.toLocaleString()}</td><td>${(t[k].accuracy*100).toFixed(1)}%</td><td>${t[k].macro_f1.toFixed(3)}</td><td>${t[k].full_recall.toFixed(2)}</td><td>${t[k].ms_per_window}</td><td>${e[k]?(e[k].accuracy*100).toFixed(0)+"%":"—"}</td></tr>`).join("");
   document.querySelectorAll("#perf a").forEach(a=>a.onclick=ev=>{ev.preventDefault();cmModel=a.dataset.k;cm()});
-  const x=M.extractor;$("extinfo").textContent=`Frame feature extractor: mean error ${(x.mae_ratio*100).toFixed(1)} points of occupancy (about ${x.mae_slots.toFixed(1)} of 36 slots). Under-est. = share of errors that predict a lower level than the truth. E2E = ${e.n_clips} rendered clips through extractor and models.`;cm()}
-function cm(){const c=M.test_lots[cmModel].confusion;const mx=Math.max(...c.flat());$("cmtitle").textContent=`Confusion matrix, ${M.names[cmModel]} (rows = true, columns = predicted; click a model name above to switch)`;
+  const x=M.extractor;$("extinfo").textContent=`MLP extractor: mean error ${(x.mae_ratio*100).toFixed(1)} pts (~${x.mae_slots.toFixed(1)} of 36 slots). CNN extractor: ${M.cnn_extractor?(M.cnn_extractor.mae_ratio*100).toFixed(1)+" pts":"(not available)"} E2E = ${e.n_clips} clips.`;cm()}
+function cm(){if(!M.test_lots[cmModel])return;const c=M.test_lots[cmModel].confusion;$("cmtitle").textContent=`Confusion matrix, ${M.names[cmModel]} (rows = true, columns = predicted; click a model name above to switch)`;
   let h='<div class="h"></div>'+CLS.map(x=>`<div class="h">${x.slice(0,4)}</div>`).join("");
   c.forEach((row,i)=>{h+=`<div class="h" style="text-align:right;padding-right:4px">${CLS[i].slice(0,4)}</div>`+row.map(v=>`<div style="background:rgba(176,16,48,${(v/Math.max(1,row.reduce((a,b)=>a+b,0))*0.9+0.04).toFixed(2)});color:${v/Math.max(1,row.reduce((a,b)=>a+b,0))>0.45?"#fff":"inherit"}">${v}</div>`).join("")});$("cm").innerHTML=h}
 (async()=>{drawHist();try{const h=await (await fetch("/api/health")).json();$("status").textContent="API online · models loaded";
