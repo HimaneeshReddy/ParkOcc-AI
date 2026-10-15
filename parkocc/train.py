@@ -147,15 +147,25 @@ def main():
     np.savez(os.path.join(ART, "kmeans_cnn.npz"), **km_model.state())
     log(f"  TEST kmeans_cnn: acc {km_res['accuracy']:.4f} macroF1 {km_res['macro_f1']:.4f}")
 
-    log("5/5 GAN training + GANClassifier head")
+    log("5/5 GAN - loading trained discriminator, fitting new 2-layer head")
     Xtr, ytr = data["train"]
     t0 = time.time()
-    G, D, xmu, xsd, gan_hist = gan_mod.train_gan(Xtr, ytr, epochs=30, log=log)
-    # save GAN generator separately (for sample generation)
-    gan_state = G.state()
-    gan_state.update({"xmu": xmu, "xsd": xsd})
-    np.savez(os.path.join(ART, "gan_generator.npz"), **gan_state)
-    # build GANClassifier and fine-tune head
+    gen_path = os.path.join(ART, "gan_generator.npz")
+    gan_path = os.path.join(ART, "gan.npz")
+    if os.path.exists(gen_path) and not retrain_all:
+        log("  GAN already trained — reusing discriminator, fitting new 2-layer head")
+        zgen = np.load(gen_path, allow_pickle=False)
+        xmu = np.asarray(zgen["xmu"], np.float32)
+        xsd = np.asarray(zgen["xsd"], np.float32)
+        D = gan_mod.Discriminator(in_dim=9, n_classes=5, seed=1)
+        if os.path.exists(gan_path):
+            D.load_state(np.load(gan_path, allow_pickle=False))
+    else:
+        log("  training GAN from scratch (30 epochs)")
+        G, D, xmu, xsd, gan_hist = gan_mod.train_gan(Xtr, ytr, epochs=30, log=log)
+        gan_state = G.state(); gan_state.update({"xmu": xmu, "xsd": xsd})
+        np.savez(os.path.join(ART, "gan_generator.npz"), **gan_state)
+    # build new GANClassifier with two-layer head and fine-tune
     gan_cls = gan_mod.GANClassifier(D, xmu, xsd, seed=42)
     gan_head_info = gan_mod.fit_gan_head(gan_cls, data["train"], data["val"],
                                           class_weights=cw, log=log)
@@ -166,7 +176,7 @@ def main():
     for _ in range(300): gan_cls.predict_proba(one)
     gan_res.update({"params": gan_cls.n_params(), "train_seconds": round(time.time() - t0, 1),
                     "epochs": gan_head_info["epochs"], "best_val_acc": gan_head_info["best_val_acc"],
-                    "ms_per_window": round((time.time() - t1) / 300 * 1000, 3), "hidden": 64})
+                    "ms_per_window": round((time.time() - t1) / 300 * 1000, 3), "hidden": 128})
     models["gan"] = gan_cls; report["gan"] = gan_res
     np.savez(os.path.join(ART, "gan.npz"), **gan_cls.state())
     log(f"  TEST gan: acc {gan_res['accuracy']:.4f} macroF1 {gan_res['macro_f1']:.4f}")

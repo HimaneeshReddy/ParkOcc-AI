@@ -277,10 +277,13 @@ class KmeansCNNClassifier:
 
     Input: window (B, T, 9)  (same as RNN/LSTM/GRU)
     Pipeline:
-        last_frame = X[:, -1, :]          (B, 9)
-        embed      = MLP(last_frame)      (B, 32)  -- the 'CNN branch' stand-in
-        soft_assign= softmax(-dist/T)     (B, K)
-        logits     = head(soft_assign)    (B, 5)
+        embed[t]   = MLP(X[:, t, :])      (B, embed_dim) per frame
+        embed_avg  = mean over T frames    (B, embed_dim)
+        soft_assign= softmax(-dist/T)      (B, K)
+        logits     = head(soft_assign)     (B, 5)
+
+    Bug fix (v2): removed spurious `* s` factor from _soft_assign_backward.
+    Enhancement: encodes all T frames and averages embeddings (not only last frame).
     """
     kind = "kmeans_cnn"
 
@@ -330,17 +333,18 @@ class KmeansCNNClassifier:
         T = float(self.embed_dim ** 0.5)
         e = np.exp(-d2 / T - d2.min(1, keepdims=True) / T)     # numerically stable
         s = e / (e.sum(1, keepdims=True) + 1e-9)
-        self._sa_embed, self._sa_diff, self._sa_s, self._sa_e = embed, diff, s, e
+        self._sa_embed, self._sa_diff, self._sa_s = embed, diff, s
         return s
 
     def _soft_assign_backward(self, ds):
         T = float(self.embed_dim ** 0.5)
-        s = self._sa_s; e = self._sa_e
-        # exact softmax backward: d_i = s_i * (ds_i - sum_j s_j * ds_j)
-        de = s * (ds - (ds * s).sum(1, keepdims=True))
-        # d/d_d2 : e_i = exp(-d2_i/T), so de_i/d_d2_i = -1/T * e_i
-        dd2 = de * (-1.0 / T) * e / (e.sum(1, keepdims=True) + 1e-9)
-        # d/d_embed: d2_ij = ||embed_i - centroid_j||^2, so grad = 2*(embed - centroid)
+        s = self._sa_s
+        # Softmax Jacobian: dz_i = s_i * (ds_i - sum_j s_j * ds_j)
+        dz = s * (ds - (ds * s).sum(1, keepdims=True))   # (B,K)
+        # chain: z_i = -d2_i/T  =>  dd2_i = dz_i * (-1/T)
+        # BUG FIX v2: removed extra `* e / e.sum()` (= `* s`) factor that was here before
+        dd2 = dz * (-1.0 / T)
+        # chain: d2_ij = ||embed_i - c_j||^2  =>  grad_embed = 2*(embed - c)
         dembed = (dd2[:, :, None] * 2 * self._sa_diff).sum(1)   # (B,E)
         return dembed
 
@@ -355,8 +359,12 @@ class KmeansCNNClassifier:
 
     # ── full model ──────────────────────────────────────────
     def forward(self, X, train=False):
-        x = X[:, -1, :]
-        embed = self._encode(x)
+        B, T, D = X.shape
+        # encode every frame, average embeddings across time
+        x = X.reshape(B * T, D).astype(np.float32)
+        embed_all = self._encode(x)                          # (B*T, E)
+        embed = embed_all.reshape(B, T, self.embed_dim).mean(1)  # (B, E)
+        self._BT = (B, T)
         s = self._soft_assign(embed)
         return self._head_fwd(s)
 
@@ -367,15 +375,19 @@ class KmeansCNNClassifier:
         return e / e.sum(1, keepdims=True)
 
     def backward(self, dlogits):
+        B, T = self._BT
         ds, g_head = self._head_bwd(dlogits)
-        dembed = self._soft_assign_backward(ds)
-        g_enc = self._encode_backward(dembed)
+        dembed = self._soft_assign_backward(ds)              # (B, E)
+        # distribute grad equally across T frames
+        dembed_all = np.tile(dembed[:, None, :] / T, (1, T, 1)).reshape(B * T, self.embed_dim)
+        g_enc = self._encode_backward(dembed_all)
         return g_enc + [g_head]
 
     # ── centroid update (hard K-means, run each epoch) ──────
     def update_centroids(self, X_all):
-        x = X_all[:, -1, :]
-        embed = self._encode(x)
+        B, T, D = X_all.shape
+        x = X_all.reshape(B * T, D).astype(np.float32)
+        embed = self._encode(x).reshape(B, T, self.embed_dim).mean(1)  # (B, E)
         d2 = ((embed[:, None, :] - self.centroids[None, :, :]) ** 2).sum(-1)
         assign = d2.argmin(1)
         for k in range(self.K):

@@ -7,7 +7,7 @@ from . import gan as gan_mod
 
 ART = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "artifacts")
 MODEL_NAMES = {
-    "baseline":    "Single-frame baseline",
+    "baseline":    "CNN",
     "rnn":         "RNN",
     "lstm":        "LSTM",
     "gru":         "GRU",

@@ -283,9 +283,12 @@ def generate_samples(G, xmu, xsd, n_per_class=200, z_dim=16, n_classes=5, seed=9
 
 class GANClassifier:
     """Uses the Discriminator's penultimate (64-d) layer as a fixed feature extractor.
-    A trainable Dense(5) softmax head is trained on top.
 
-    Input: window (B,T,9)  — last frame used, dummy label (uniform) for D.
+    v2 improvements:
+    - Features are averaged over ALL T frames (not just the last one).
+    - Two-layer trainable head: 64 -> 128 ReLU -> n_classes.
+
+    Input: window (B,T,9)
     """
     kind = "gan"
 
@@ -295,21 +298,28 @@ class GANClassifier:
         self.xsd = xsd.astype(np.float32)
         self.n_classes = n_classes
         rng = np.random.default_rng(seed)
-        lim = np.sqrt(6.0 / (64 + n_classes))
-        self.head = {"W": rng.uniform(-lim, lim, (64, n_classes)).astype(np.float32),
-                     "b": np.zeros(n_classes, np.float32)}
+        # two-layer head: 64 -> 128 (ReLU) -> n_classes
+        self.h1 = {"W": _glorot(rng, 64, 128), "b": np.zeros(128, np.float32)}
+        self.h2 = {"W": _glorot(rng, 128, n_classes), "b": np.zeros(n_classes, np.float32)}
         self._feat_cache = None
+        self._h1_cache = None
 
     def _features(self, X):
-        x = X[:, -1, :].astype(np.float32)
+        """Average penultimate D features over all T frames. Returns (B, 64)."""
+        B, T, D = X.shape
+        x = X.reshape(B * T, D).astype(np.float32)
         xn = (x - self.xmu) / self.xsd
-        loh = np.ones((len(x), self.n_classes), np.float32) / self.n_classes
-        return self.D.penultimate(xn, loh)    # (B, 64)
+        loh = np.ones((B * T, self.n_classes), np.float32) / self.n_classes
+        feat = self.D.penultimate(xn, loh)          # (B*T, 64)
+        return feat.reshape(B, T, 64).mean(1)        # (B, 64)
 
     def forward(self, X, train=False):
         feat = self._features(X)
         self._feat_cache = feat
-        return feat @ self.head["W"] + self.head["b"]
+        h1 = feat @ self.h1["W"] + self.h1["b"]
+        h1_relu = np.maximum(h1, 0)
+        self._h1_cache = (h1, h1_relu)
+        return h1_relu @ self.h2["W"] + self.h2["b"]
 
     def predict_proba(self, X):
         z = self.forward(X)
@@ -318,17 +328,22 @@ class GANClassifier:
         return e / e.sum(1, keepdims=True)
 
     def backward(self, dlogits):
-        g_head = {"W": self._feat_cache.T @ dlogits, "b": dlogits.sum(0)}
-        return g_head
+        h1, h1_relu = self._h1_cache
+        g_h2 = {"W": h1_relu.T @ dlogits, "b": dlogits.sum(0)}
+        dh1 = (dlogits @ self.h2["W"].T) * (h1 > 0)
+        g_h1 = {"W": self._feat_cache.T @ dh1, "b": dh1.sum(0)}
+        return g_h1, g_h2
 
     def n_params(self):
-        return sum(v.size for v in self.head.values())
+        return (sum(v.size for v in self.h1.values()) +
+                sum(v.size for v in self.h2.values()))
 
     # ── save / load ─────────────────────────────────────────
     def state(self):
         d = {"kind": np.array("gan"),
              "xmu": self.xmu, "xsd": self.xsd,
-             "head.W": self.head["W"], "head.b": self.head["b"]}
+             "h1.W": self.h1["W"], "h1.b": self.h1["b"],
+             "h2.W": self.h2["W"], "h2.b": self.h2["b"]}
         d.update(self.D.state())
         return d
 
@@ -337,20 +352,22 @@ class GANClassifier:
         D = Discriminator()
         D.load_state(z)
         m = cls(D, z["xmu"], z["xsd"])
-        m.head["W"] = np.asarray(z["head.W"], np.float32)
-        m.head["b"] = np.asarray(z["head.b"], np.float32)
+        if "h1.W" in z:
+            m.h1["W"] = np.asarray(z["h1.W"], np.float32)
+            m.h1["b"] = np.asarray(z["h1.b"], np.float32)
+            m.h2["W"] = np.asarray(z["h2.W"], np.float32)
+            m.h2["b"] = np.asarray(z["h2.b"], np.float32)
+        # old format (head.W / head.b) is silently ignored -> head re-initialised randomly
         return m
 
 
 def fit_gan_head(model, train, val, epochs=12, patience=4,
                  batch=256, lr=1e-3, class_weights=None, log=print, seed=42):
-    """Fine-tune only the GANClassifier head (backbone frozen)."""
+    """Fine-tune only the GANClassifier head (backbone frozen). Supports two-layer head."""
     from . import nn as _nn
     (Xt, yt), (Xv, yv) = train, val
     rng = np.random.default_rng(seed)
-    t_adam, b1, b2, clip = 0, 0.9, 0.999, 5.0
-    m0 = np.zeros_like(model.head["W"]); v0 = np.zeros_like(model.head["W"])
-    m1 = np.zeros_like(model.head["b"]); v1 = np.zeros_like(model.head["b"])
+    opt = _Adam([model.h1, model.h2], lr=lr)
     best, best_state, bad, hist = -1, None, 0, []
     for ep in range(epochs):
         t0 = time.time(); idx = rng.permutation(len(Xt)); tot = 0.0
@@ -358,18 +375,8 @@ def fit_gan_head(model, train, val, epochs=12, patience=4,
             b = idx[s:s + batch]
             logits = model.forward(Xt[b], True)
             loss, d = _nn.softmax_ce(logits, yt[b], class_weights)
-            g = model.backward(d)
-            t_adam += 1
-            for param, m_p, v_p, gp in [
-                    ("W", m0, v0, g["W"]), ("b", m1, v1, g["b"])]:
-                norm = np.sqrt((gp ** 2).sum() + 1e-12)
-                sc = min(1.0, clip / norm)
-                gp_sc = gp * sc
-                m_p[:] = b1 * m_p + (1 - b1) * gp_sc
-                v_p[:] = b2 * v_p + (1 - b2) * gp_sc * gp_sc
-                mh = m_p / (1 - b1 ** t_adam)
-                vh = v_p / (1 - b2 ** t_adam)
-                model.head[param] -= lr * mh / (np.sqrt(vh) + 1e-8)
+            g_h1, g_h2 = model.backward(d)
+            opt.step([g_h1, g_h2])
             tot += loss * len(b)
         va = float((model.predict_proba(Xv).argmax(1) == yv).mean())
         hist.append((tot / len(idx), va))
@@ -382,5 +389,5 @@ def fit_gan_head(model, train, val, epochs=12, patience=4,
             if bad >= patience:
                 break
     restored = GANClassifier.from_state(best_state)
-    model.head, model.D = restored.head, restored.D
+    model.h1, model.h2, model.D = restored.h1, restored.h2, restored.D
     return {"best_val_acc": best, "epochs": len(hist), "history": hist}
