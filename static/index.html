@@ -28,7 +28,6 @@ header p{margin:0;opacity:.9;font-size:13.5px}
 .nav-tab:hover{background:rgba(255,255,255,0.26)}
 .nav-tab.active{background:#fff;color:var(--crimson);border-color:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.2)}
 .nav-tab .badge-xai{background:var(--red);color:#fff;font-size:10px;padding:2px 7px;border-radius:10px;text-transform:uppercase;font-weight:700}
-#status{font-size:12px;padding:4px 12px;border-radius:999px;background:rgba(255,255,255,.18);font-family:monospace}
 
 main{max-width:1220px;margin:0 auto;padding:22px 20px 48px}
 .view-grid{display:grid;grid-template-columns:minmax(310px,420px) 1fr;gap:22px}
@@ -167,7 +166,6 @@ tr.sel td{background:rgba(176,16,48,.10);font-weight:700}
       <span>🧠</span> Explainable AI <span class="badge-xai">Architecture & XAI</span>
     </button>
   </div>
-  <span id="status" role="status">connecting&hellip;</span>
 </header>
 
 <main>
@@ -868,13 +866,12 @@ function renderXAISaliency(ratio, mdl, classIdx, label, conf, isSingleImage){
   drawHist();
   showPipeDetail(1, document.querySelector(".pipe-step"));
   try{
-    const h=await (await fetch("/api/health")).json();
-    $("status").textContent="API online · models loaded";
+    await (await fetch("/api/health")).json();
     M=await (await fetch("/api/models")).json();
     perf();
     updateXAIView();
   }catch(e){
-    $("status").textContent="API offline";
+    console.warn("API initialization note:", e);
   }
 })();
 </script>
