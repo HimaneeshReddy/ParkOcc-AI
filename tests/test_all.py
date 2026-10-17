@@ -59,17 +59,19 @@ class TestAPI(unittest.TestCase):
     def setUpClass(cls):
         from parkocc.app import create_app; cls.c = create_app().test_client()
     def test_health_and_models(self):
+        from parkocc.infer import MODEL_NAMES
         self.assertEqual(self.c.get("/api/health").get_json()["status"], "ok")
-        m = self.c.get("/api/models").get_json(); self.assertEqual(set(m["names"]), {"baseline", "rnn", "lstm", "gru"}); self.assertIn("test_lots", m)
+        m = self.c.get("/api/models").get_json(); self.assertEqual(set(m["names"]), set(MODEL_NAMES)); self.assertIn("test_lots", m)
         self.assertEqual(self.c.get("/").status_code, 200)
     def test_ordinal_safety_on_test_lots(self):
         m = self.c.get("/api/models").get_json()["test_lots"]
         for k, v in m.items(): self.assertEqual(v["empty_full_confusions"], 0, k)
     def test_sample_then_predict(self):
+        from parkocc.infer import MODEL_NAMES
         s = self.c.post("/api/sample", json={"level": "Full", "condition": "clear", "noise": False}).get_json()
         self.assertEqual(len(s["frames"]), WINDOW); self.assertEqual(s["truth"]["class"], "Full")
         r = self.c.post("/api/predict", data={"clip_id": s["clip_id"], "model": "gru", "condition": "clear"}).get_json()
-        self.assertEqual(set(r["results"]), {"baseline", "rnn", "lstm", "gru"}); self.assertEqual(len(r["frames"]), WINDOW)
+        self.assertEqual(set(r["results"]), set(MODEL_NAMES)); self.assertEqual(len(r["frames"]), WINDOW)
         for v in r["results"].values(): self.assertAlmostEqual(sum(v["probs"].values()), 1, places=4)
         self.assertGreater(r["estimated_ratio"], 0.6)
     def test_empty_vs_full_are_separated(self):
